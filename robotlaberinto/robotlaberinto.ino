@@ -13,10 +13,10 @@ float val[5];
 int velocidad=30;
 
 int vel=(255*velocidad)/100;
-int vel2=(vel*5)/10;
-int vel3=(vel*6)/9;
+int vel2=(vel*15)/100;
+int vel3=(vel*55)/100;
    
-int vgiro;
+float vgiro;
 
 int deriva=0;
 
@@ -30,6 +30,19 @@ boolean muevemotores=true;
 float umbral=8.6;
 float umbral2=6.0;
 
+
+////PID////
+
+float pid;
+float p=0.0;
+float ii=0.0;
+float d=0.0;
+
+float  error, error_anterior;
+
+///////////
+
+
 int calibracion[5][20]={ 
                    {4094,4094,3300,2550,2000,1500,1220,980,840,730,640,575,510,450,415,375,350,320,300,275},
                    {4094,4094,4040,3130,2500,1930,1550,1270,1100,950,825,725,650,575,530,480,440,415,380,365},
@@ -37,6 +50,38 @@ int calibracion[5][20]={
                    {4094,4000,3240,2400,1850,1470,1150,950,820,690,600,530,470,420,380,350,320,300,275,260},
                    {4094,4000,3200,2470,1880,1550,1250,1050,870,760,670,600,530,490,450,410,385,350,335,310}};
 
+void calculapid(){
+    
+    
+    vgiro=val[0]+val[1]-val[3]-val[4];  //Los valores de vgiro varian entre 20 y -20 
+
+    if(vgiro>20.0){ vgiro=20.0; }            ///Limitamos los valores para que no haya sorpresas.
+    else if(vgiro<-20.0){ vgiro=-20.0; }  
+    
+
+    float Kp=1.0;      //0-12.75
+    float Ki=0.015 ;     //0-12.75
+    float Kd=0.02;     //0-12.75
+    
+    
+    error = vgiro;
+  
+    p=error;
+    ii=ii+error;
+    ii = constrain(ii,-2000,2000);   //Prevent i from going to +/- infinity     
+  
+    d = error-error_anterior;        // error differential 
+    error_anterior = error;          // Save last error for next loop
+  
+    pid = (Kp*p)+(Ki*ii)+(Kd*d);  // Do PID
+
+    pid = constrain(pid,-255,255);   
+
+    //Serial.print(vgiro);
+    //Serial.print(",");
+    //Serial.println(pid);
+    
+}
 
 float normaliza(int val,int numsensor){    //Recibe el valor del sensor y lo normaliza para igualar los valores de todos los sensores
 
@@ -225,6 +270,8 @@ void Task1code( void * pvParameters ){    // Lectura sensore IR
 
 void loop(){
 
+  
+  
   if(muevemotores){
   
     //int val=(int)(conled[2]-sinled[2]); 
@@ -241,12 +288,12 @@ void loop(){
 
             while(sigue){          
 
-                if((val[0]>2.5)&&(val[1]>3.5)&&(val[2]>umbral)){ sigue=false; }
+                if((val[0]>1.0)&&(val[1]>2.0)&&(val[2]>umbral)){ sigue=false; }
                 
                 if((val[0]<umbral)&&(val[1]<umbral)&&(val[2]<umbral)&&(val[3]<umbral)&&(val[4]<umbral)){  girocompleto();  break; }      
                                                   
                 ledcWrite(0,0);ledcWrite(1,vel);
-                ledcWrite(2,vel3);ledcWrite(3,0); 
+                ledcWrite(2,vel2);ledcWrite(3,0); 
                 espera(1);                       
                 
             }
@@ -256,12 +303,12 @@ void loop(){
                       
             while(sigue){          
 
-                if((val[4]>2.5)&&(val[3]>3.5)&&(val[2]>umbral)){ sigue=false; }
+                if((val[4]>1.0)&&(val[3]>2.0)&&(val[2]>umbral)){ sigue=false; }
                  
                 
                 if((val[0]<umbral)&&(val[1]<umbral)&&(val[2]<umbral)&&(val[3]<umbral)&&(val[4]<umbral)){  girocompleto();  break; }      
                                        
-                ledcWrite(0,vel3);ledcWrite(1,0);
+                ledcWrite(0,vel2);ledcWrite(1,0);
                 ledcWrite(2,0);ledcWrite(3,vel); 
                 espera(1);   
                                     
@@ -275,29 +322,32 @@ void loop(){
         
     }else {
 
-        if(vgiro<0){  //Giro a la izquierda
+        calculapid();
+        
+        if(pid<0){  //Giro a la izquierda
 
-           deriva--;
-           if(deriva<-1000){
-              ledcWrite(0,0);ledcWrite(1,vel);
-              ledcWrite(2,vel);ledcWrite(3,0);                                       
-           }else{
-              ledcWrite(0,0);ledcWrite(1,vel);
-              ledcWrite(2,0);ledcWrite(3,vel2);                                     
-           }
+            if(pid>-128){
+                int v=map(pid,-128,0,0,vel);
+                ledcWrite(0,0);ledcWrite(1,vel);
+                ledcWrite(2,0);ledcWrite(3,v);                                                                
+            }else{
+                int v=map(pid,-128,-255,0,vel);
+                ledcWrite(0,0);ledcWrite(1,vel);
+                ledcWrite(2,v);ledcWrite(3,0);      
+            }
                            
         }else{   //Giro a la derecha
-                                       
-           
-           deriva++;
-           if(deriva>1000){
-              ledcWrite(0,vel);ledcWrite(1,0);
-              ledcWrite(2,0);ledcWrite(3,vel);                        
-           }else{
-              ledcWrite(0,0);ledcWrite(1,vel2);
-              ledcWrite(2,0);ledcWrite(3,vel);            
-           }
-           
+
+            if(pid<128){
+                int v=map(pid,0,128,vel,0);
+                ledcWrite(0,0);ledcWrite(1,v);
+                ledcWrite(2,0);ledcWrite(3,vel);                                                                
+            }else{
+                int v=map(pid,128,255,0,vel);
+                ledcWrite(0,v);ledcWrite(1,0);
+                ledcWrite(2,0);ledcWrite(3,vel);      
+            }                                       
+                      
         }
   
     }
